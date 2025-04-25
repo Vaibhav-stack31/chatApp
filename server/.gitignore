@@ -1,0 +1,18 @@
+# Dependencies
+/node_modules
+
+# Env files
+.env
+
+# Logs
+logs/
+*.log
+
+# Build
+/dist
+
+# DB / uploads (if applicable)
+*.sqlite
+*.db
+/uploads
+/tmp
