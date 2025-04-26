@@ -78,44 +78,45 @@ export const useAuthStore = create((set, get) => ({
             set({isUpdatingProfile: false});
         }
     },
-    // useAuthStore.js
     connectSocket: () => {
-        const { authUser, socket } = get();
-        if (!authUser || socket?.connected) return;
+        const { authUser } = get();
+        if (!authUser || get().socket?.connected) return;
     
-        const newSocket = io(BASE_URL, {
-            query: { userId: authUser._id },
-            transports: ["websocket"], // ensure websocket connection immediately
-            withCredentials: true
+        const socket = io(BASE_URL, {
+            query: { userId: authUser._id }
         });
     
-        newSocket.on("connect", () => {
-            console.log("Socket connected:", newSocket.id);
+        socket.on("connect", () => {
+            console.log("Socket connected");
+            socket.emit("getOnlineUsers");
         });
     
-        newSocket.on("allUsers", (users) => {
-            set({ onlineUsers: users });
+        socket.on("allUsers", async (users) => {
+            await set({ onlineUsers: users });
         });
     
-        newSocket.on("userOnline", (userId) => {
-            set((state) => ({
-                onlineUsers: [...new Set([...state.onlineUsers, userId])]
-            }));
+        socket.on("userOnline", (userId) => {
+            set((state) => {
+                if (!state.onlineUsers.includes(userId)) {
+                    return { onlineUsers: [...state.onlineUsers, userId] };
+                }
+                return state;
+            });
         });
     
-        newSocket.on("userOffline", (userId) => {
+        socket.on("userOffline", (userId) => {
             set((state) => ({
                 onlineUsers: state.onlineUsers.filter((id) => id !== userId)
             }));
         });
     
-        newSocket.on("connect_error", (err) => {
-            console.error("Socket connection error:", err.message);
+        socket.on("connect_error", (err) => {
+            console.log("Connection error:", err);
         });
     
-        set({ socket: newSocket });
+        set({ socket });
+        socket.connect();
     },
-
     disconnectSocket: () => {
         const socket = get().socket;
         if (socket?.connected) {
