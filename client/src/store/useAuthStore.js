@@ -44,15 +44,17 @@ export const useAuthStore = create((set, get) => ({
         set({ isLoggingIn: true });
         try {
             const res = await axiosInstance.post("/auth/login", data);
-            set({ authUser: res.data });
+            set({ authUser: res.data }, () => {
+                get().connectSocket(); // 💥 connect socket immediately after authUser set
+            });
             toast.success("Logged in successfully");
-            get().connectSocket();
         } catch (error) {
-            toast.error(error.response.data.message);
+            toast.error(error.response?.data?.message || "Login failed");
         } finally {
-            set({ isLoggingIn: false })
+            set({ isLoggingIn: false });
         }
     },
+
     
     logout: async () => {
         try {
@@ -79,44 +81,42 @@ export const useAuthStore = create((set, get) => ({
     },
     // useAuthStore.js
     connectSocket: () => {
-        const {authUser} = get();
-        if(!authUser || get().socket?.connected) return;
-
-        const socket = io(BASE_URL, {
-            query: { userId: authUser._id }
+        const { authUser, socket } = get();
+        if (!authUser || socket?.connected) return;
+    
+        const newSocket = io(BASE_URL, {
+            query: { userId: authUser._id },
+            transports: ["websocket"], // ensure websocket connection immediately
+            withCredentials: true
         });
-
-        socket.on("connect", () => {
-            console.log("Socket connected");
+    
+        newSocket.on("connect", () => {
+            console.log("Socket connected:", newSocket.id);
         });
-
-        socket.on("allUsers", async(users) => {
-            await set({onlineUsers: users});
+    
+        newSocket.on("allUsers", (users) => {
+            set({ onlineUsers: users });
         });
-
-
-        socket.on("userOnline", (userId) => {
-            set((state) => {
-                if (!state.onlineUsers.includes(userId)) {
-                    return { onlineUsers: [...state.onlineUsers, userId] };
-                }
-                return state;
-            });
+    
+        newSocket.on("userOnline", (userId) => {
+            set((state) => ({
+                onlineUsers: [...new Set([...state.onlineUsers, userId])]
+            }));
         });
-
-        socket.on("userOffline", (userId) => {
+    
+        newSocket.on("userOffline", (userId) => {
             set((state) => ({
                 onlineUsers: state.onlineUsers.filter((id) => id !== userId)
             }));
-        });     
-
-        socket.on("connect_error", (err) => {
-            console.log("Connection error:", err);
         });
-
-        set({socket});
-        socket.connect();
+    
+        newSocket.on("connect_error", (err) => {
+            console.error("Socket connection error:", err.message);
+        });
+    
+        set({ socket: newSocket });
     },
+
     disconnectSocket: () => {
         const socket = get().socket;
         if (socket?.connected) {
